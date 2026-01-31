@@ -1,20 +1,23 @@
 # Investment Tracker TUI
 
-A terminal-based investment tracking application built with Python 3.12 and Textual.
+A terminal-based portfolio management application built with Python 3.12 and Textual.
 
 ## Features
 
 - ✨ **Modern TUI Interface**: Clean, intuitive terminal user interface
-- 📊 **Investment Tracking**: Track investments across multiple timeframes (1M, 3M, 6M, 1Y)
-- 💰 **Automatic Calculations**: Original amount and profit/loss calculated automatically
-- 💾 **Data Persistence**: JSON-based storage with automatic backups
-- 📈 **Portfolio Summary**: View performance statistics by timeframe
+- 📁 **Portfolio Management**: Organize investments into multiple portfolios (investment packages)
+- 💰 **Hierarchical Structure**: Portfolios contain multiple investments with shared timeframe
+- 📊 **Investment Tracking**: Track investments across timeframes (1M, 3M, 6M, 1Y)
+- 🔄 **Investment Mobility**: Move investments between portfolios easily
+- 💾 **Data Persistence**: JSON-based storage (v2.0) with automatic backups
+- 📈 **Portfolio Summary**: View performance statistics by portfolio and overall
 - 🎨 **Visual Indicators**: Color-coded profits (green) and losses (red)
+- 🔄 **Context-Aware Shortcuts**: Smart keyboard shortcuts that adapt to your current view
 
 ## Installation
 
 ### Prerequisites
-- Python 3.11 or higher
+- Python 3.12 or higher
 - UV package manager (optional)
 
 ### Setup
@@ -44,71 +47,129 @@ uv run python main.py
 
 ## Usage
 
-### Adding Investments
+### Getting Started
 
-1. Press `A` or click "Add Investment" to open investment form
-2. Enter investment details:
-   - **Name**: Descriptive name for your investment
-   - **Timeframe**: Investment period (1 Month, 3 Months, 6 Months, 1 Year)
-   - **Final Amount**: Current value of the investment
-   - **% Change**: Profit (+) or loss (-) percentage
+The app uses a **hierarchical structure**: 
+1. **Portfolios** are investment containers (e.g., "Short Term", "Long Term Holdings")
+2. Each portfolio has a timeframe (1M, 3M, 6M, 1Y) that applies to all investments within it
+3. **Investments** belong to a specific portfolio
 
-The app will automatically calculate:
-- Original investment amount
-- Absolute profit/loss amount
-- Return rate
+### Managing Portfolios
+
+**Main Screen - Portfolio List:**
+1. App opens with list of all portfolios
+2. First portfolio is automatically selected
+3. Use ↑/↓ to navigate between portfolios
+4. Press **Enter** to open a portfolio and view its investments
+
+**Creating Portfolios:**
+1. Press `F` to create a new portfolio
+2. Enter portfolio name, description (optional), and timeframe
+3. Portfolio appears in the list
+
+**Editing Portfolios:**
+1. Navigate to portfolio with ↑/↓
+2. Press `E` to edit name, description, or timeframe
+3. Press `D` to delete (only if empty)
 
 ### Managing Investments
 
-- **Edit**: Press `E` to edit the selected investment
-- **Delete**: Press `D` to delete the selected investment
-- **Summary**: Press `S` to view portfolio statistics
-- **Refresh**: Press `R` to reload data from storage
+**Inside a Portfolio:**
+1. Press `Enter` to open selected portfolio
+2. Portfolio detail screen shows all investments
+3. Use ↑/↓ to navigate between investments
 
-### Example Investment
+**Adding Investments:**
+1. Press `A` to add a new investment to current portfolio
+2. Enter investment name, final amount, and percentage change
+3. Timeframe is automatically inherited from the portfolio
 
-For an investment that started at $100,000 and is now worth $105,000 with a 5% profit over 1 month:
+**Editing Investments:**
+1. Navigate to investment with ↑/↓
+2. Press `E` to edit name, final amount, or percentage change
+3. Press `D` to delete the investment
 
-- **Final Amount**: `105000`
-- **% Change**: `5`
-- **Calculated Original Amount**: `100,000.00`
-- **Calculated Profit**: `+5,000.00`
+**Moving Investments:**
+1. Navigate to investment with ↑/↓
+2. Press `M` to move it to a different portfolio
+3. Select target portfolio from the list
+
+**Going Back:**
+- Press `B` to return to the portfolio list from investment view
+- Press `B` to return from summary screen
+
+### Viewing Summary
+
+Press `S` from any screen to see:
+- Performance statistics for each portfolio
+- Overall grand total across all portfolios
+- Investment counts and return rates
 
 ## Keyboard Shortcuts
 
+### Main Screen (Portfolio List)
+
+When viewing the list of portfolios:
+
 | Key | Action |
 |-----|--------|
-| `A` | Add new investment |
+| `F` | Add new portfolio |
+| `E` | Edit selected portfolio |
+| `D` | Delete selected portfolio (must be empty) |
+| `Enter` | Enter selected portfolio to view investments |
+| `S` | Show portfolio summary |
+| `R` | Refresh data from storage |
+| `Q` | Quit application |
+| `↑/↓` | Navigate between portfolios |
+
+### Inside Portfolio (Investment List)
+
+When viewing investments within a portfolio:
+
+| Key | Action |
+|-----|--------|
+| `A` | Add new investment to current portfolio |
 | `E` | Edit selected investment |
 | `D` | Delete selected investment |
+| `M` | Move selected investment to different portfolio |
+| `B` | Back to portfolio list |
 | `S` | Show portfolio summary |
 | `R` | Refresh data |
 | `Q` | Quit application |
-| `↑/↓` | Navigate investments |
-| `Enter` | Select/confirm |
-| `Esc` | Cancel/exit dialog |
+| `↑/↓` | Navigate between investments |
+
+**Note:** `E` and `D` are **context-aware** - they edit/delete whatever is currently selected (portfolio in main screen, investment inside portfolio).
 
 ## Data Storage
 
 - **Location**: `data/investments.json`
 - **Backup**: Automatic backups created in `data/backups/`
-- **Format**: JSON with timestamps and metadata
+- **Format**: JSON v2.0 with portfolios and investments
 
-### Data Structure
+### Data Structure (v2.0)
 
 ```json
 {
-  "version": "1.0",
-  "last_updated": "2025-01-31T10:30:00Z",
+  "version": "2.0",
+  "last_updated": "2026-01-31T10:30:00Z",
+  "portfolios": [
+    {
+      "id": "uuid-string",
+      "name": "Short Term Growth",
+      "description": "High growth investments",
+      "timeframe": "1M",
+      "created_at": "2026-01-31T10:30:00Z"
+    }
+  ],
   "investments": [
     {
       "id": "uuid-string",
-      "name": "Stock Portfolio",
-      "timeframe": "1M",
+      "name": "Tech Stock Portfolio",
+      "portfolio_id": "portfolio-uuid",
       "final_amount": 105000.0,
       "percentage_change": 5.0,
-      "created_at": "2025-01-31T10:30:00Z",
-      "updated_at": "2025-01-31T10:30:00Z"
+      "created_at": "2026-01-31T10:30:00Z",
+      "updated_at": "2026-01-31T10:30:00Z"
     }
   ]
 }
@@ -123,8 +184,8 @@ investment-tracker/
 ├── src/
 │   ├── __init__.py
 │   ├── app.py            # Main application
-│   ├── models.py         # Data models
-│   ├── storage.py        # Data persistence
+│   ├── models.py         # Data models (Portfolio, Investment)
+│   ├── storage.py        # Data persistence with migration
 │   └── widgets.py        # UI components
 ├── data/
 │   ├── investments.json  # Main data file
@@ -187,9 +248,9 @@ This project is open source. See the license file for details.
 
 ## Roadmap
 
-- [ ] Investment grouping by category
+- [x] Portfolio management with multiple investment packages
 - [ ] Historical performance tracking
-- [ ] CSV export/import functionality
+- [x] CSV export/import functionality
 - [ ] Multiple currency support
 - [ ] Investment comparison charts
 - [ ] Data synchronization with cloud storage

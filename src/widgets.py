@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -6,11 +6,148 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, Static
 from textual.validation import Function
 
-from .models import Investment, Timeframe
+from .models import Investment, Portfolio, Timeframe
+
+
+class PortfolioForm(ModalScreen):
+    """Modal screen for adding/editing portfolios."""
+
+    CSS = """
+    PortfolioForm {
+        align: center middle;
+    }
+
+    .form-container {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1;
+    }
+
+    .form-title {
+        text-align: center;
+        text-style: bold;
+        color: $primary;
+        margin: 1 0;
+    }
+
+    .form-row {
+        height: auto;
+        padding: 0 1;
+    }
+
+    .form-label {
+        width: 20;
+        text-align: right;
+        margin: 1 1 0 0;
+    }
+
+    .form-input {
+        width: 35;
+    }
+
+    .button-container {
+        height: 3;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, portfolio: Portfolio | None = None):
+        super().__init__()
+        self.portfolio = portfolio
+        self.title_text = "Edit Portfolio" if portfolio else "Add New Portfolio"
+
+    def compose(self) -> ComposeResult:
+        """Compose the form layout."""
+        with Container(classes="form-container"):
+            yield Label(self.title_text, classes="form-title")
+            
+            # Name input
+            with Horizontal(classes="form-row"):
+                yield Label("Name:", classes="form-label")
+                yield Input(
+                    value=self.portfolio.name if self.portfolio else "",
+                    placeholder="Portfolio name",
+                    id="name-input",
+                    classes="form-input"
+                )
+            
+            # Description input
+            with Horizontal(classes="form-row"):
+                yield Label("Description:", classes="form-label")
+                yield Input(
+                    value=self.portfolio.description if self.portfolio else "",
+                    placeholder="Optional description",
+                    id="description-input",
+                    classes="form-input"
+                )
+            
+            # Timeframe select
+            with Horizontal(classes="form-row"):
+                yield Label("Timeframe:", classes="form-label")
+                yield Select(
+                    options=[
+                        ("1 Month", "1M"),
+                        ("3 Months", "3M"), 
+                        ("6 Months", "6M"),
+                        ("1 Year", "1Y")
+                    ],
+                    value=self.portfolio.timeframe if self.portfolio else "1M",
+                    id="timeframe-select",
+                    classes="form-input"
+                )
+            
+            # Buttons
+            with Container(classes="button-container"):
+                yield Button("Save", id="save-button", variant="primary")
+                yield Button("Cancel", id="cancel-button")
+                if self.portfolio:
+                    yield Button("Delete", id="delete-button", variant="error")
+
+    def on_mount(self) -> None:
+        """Setup the form when mounted."""
+        if not self.portfolio:
+            self.query_one("#name-input").focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press events."""
+        if event.button.id == "save-button":
+            self._save_portfolio()
+        elif event.button.id == "cancel-button":
+            self.dismiss(None)
+        elif event.button.id == "delete-button" and self.portfolio:
+            self.dismiss(("delete", self.portfolio.id))
+
+    def _save_portfolio(self) -> None:
+        """Validate and save the portfolio."""
+        name_input = self.query_one("#name-input", Input)
+        description_input = self.query_one("#description-input", Input)
+        timeframe_select = self.query_one("#timeframe-select", Select)
+
+        if not name_input.value.strip():
+            name_input.focus()
+            return
+
+        portfolio_data = {
+            "name": name_input.value.strip(),
+            "description": description_input.value.strip(),
+            "timeframe": timeframe_select.value
+        }
+
+        if self.portfolio:
+            portfolio_data["id"] = self.portfolio.id
+            self.dismiss(("update", portfolio_data))
+        else:
+            self.dismiss(("create", portfolio_data))
 
 
 class InvestmentForm(ModalScreen):
-    """Modal screen for adding/editing investments."""
+    """Modal screen for adding/editing investments within a portfolio."""
 
     CSS = """
     InvestmentForm {
@@ -78,9 +215,10 @@ class InvestmentForm(ModalScreen):
     }
     """
 
-    def __init__(self, investment: Investment | None = None):
+    def __init__(self, investment: Investment | None = None, portfolio_id: str | None = None):
         super().__init__()
         self.investment = investment
+        self.portfolio_id = portfolio_id
         self.title_text = "Edit Investment" if investment else "Add New Investment"
 
     def compose(self) -> ComposeResult:
@@ -95,21 +233,6 @@ class InvestmentForm(ModalScreen):
                     value=self.investment.name if self.investment else "",
                     placeholder="Investment name",
                     id="name-input",
-                    classes="form-input"
-                )
-            
-            # Timeframe select
-            with Horizontal(classes="form-row"):
-                yield Label("Timeframe:", classes="form-label")
-                yield Select(
-                    options=[
-                        ("1 Month", "1M"),
-                        ("3 Months", "3M"), 
-                        ("6 Months", "6M"),
-                        ("1 Year", "1Y")
-                    ],
-                    value=self.investment.timeframe if self.investment else "1M",
-                    id="timeframe-select",
                     classes="form-input"
                 )
             
@@ -153,7 +276,6 @@ class InvestmentForm(ModalScreen):
         """Setup the form when mounted."""
         self._update_calc_preview()
         
-        # Focus on name input if new investment
         if not self.investment:
             self.query_one("#name-input").focus()
 
@@ -201,7 +323,6 @@ class InvestmentForm(ModalScreen):
                     f"Return Rate: {percentage:+.2f}%"
                 )
                 
-                # Set color based on profit/loss
                 style_class = "profit" if profit_loss >= 0 else "loss"
                 
                 preview = self.query_one("#calc-preview", Container)
@@ -231,13 +352,10 @@ class InvestmentForm(ModalScreen):
 
     def _save_investment(self) -> None:
         """Validate and save the investment."""
-        # Get form values
         name_input = self.query_one("#name-input", Input)
-        timeframe_select = self.query_one("#timeframe-select", Select)
         final_amount_input = self.query_one("#final-amount-input", Input)
         percentage_input = self.query_one("#percentage-input", Input)
 
-        # Validate inputs
         if not name_input.value.strip():
             name_input.focus()
             return
@@ -251,21 +369,106 @@ class InvestmentForm(ModalScreen):
         if final_amount <= 0 or percentage < -100:
             return
 
-        # Create investment data
         investment_data = {
             "name": name_input.value.strip(),
-            "timeframe": timeframe_select.value,
             "final_amount": final_amount,
             "percentage_change": percentage
         }
 
         if self.investment:
-            # Update existing investment
             investment_data["id"] = self.investment.id
+            investment_data["portfolio_id"] = self.investment.portfolio_id
             self.dismiss(("update", investment_data))
         else:
-            # Create new investment
+            investment_data["portfolio_id"] = self.portfolio_id
             self.dismiss(("create", investment_data))
+
+
+class InvestmentMoveDialog(ModalScreen):
+    """Modal screen for moving an investment to a different portfolio."""
+
+    CSS = """
+    InvestmentMoveDialog {
+        align: center middle;
+    }
+
+    .dialog-container {
+        width: 50;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1;
+    }
+
+    .dialog-title {
+        text-align: center;
+        text-style: bold;
+        color: $primary;
+        margin: 1 0;
+    }
+
+    .dialog-text {
+        text-align: center;
+        margin: 1 0;
+    }
+
+    .form-row {
+        height: auto;
+        padding: 0 1;
+    }
+
+    .form-label {
+        width: 20;
+        text-align: right;
+        margin: 1 1 0 0;
+    }
+
+    .form-input {
+        width: 25;
+    }
+
+    .button-container {
+        height: 3;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, investment: Investment, portfolios: List[Portfolio]):
+        super().__init__()
+        self.investment = investment
+        self.portfolios = [p for p in portfolios if p.id != investment.portfolio_id]
+
+    def compose(self) -> ComposeResult:
+        """Compose the dialog layout."""
+        with Container(classes="dialog-container"):
+            yield Label("Move Investment", classes="dialog-title")
+            yield Label(f"Moving: {self.investment.name}", classes="dialog-text")
+            
+            with Horizontal(classes="form-row"):
+                yield Label("To Portfolio:", classes="form-label")
+                yield Select(
+                    options=[(p.name, p.id) for p in self.portfolios],
+                    value=self.portfolios[0].id if self.portfolios else None,
+                    id="portfolio-select",
+                    classes="form-input"
+                )
+            
+            with Container(classes="button-container"):
+                yield Button("Move", id="move-button", variant="primary")
+                yield Button("Cancel", id="cancel-button")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press events."""
+        if event.button.id == "move-button":
+            portfolio_select = self.query_one("#portfolio-select", Select)
+            if portfolio_select.value:
+                self.dismiss(("move", self.investment.id, portfolio_select.value))
+        elif event.button.id == "cancel-button":
+            self.dismiss(None)
 
 
 class ConfirmationDialog(ModalScreen):
@@ -295,11 +498,11 @@ class ConfirmationDialog(ModalScreen):
     }
     """
 
-    def __init__(self, title: str, message: str, investment_id: str | None = None):
+    def __init__(self, title: str, message: str, item_id: str | None = None):
         super().__init__()
         self.title_text = title
         self.message_text = message
-        self.investment_id = investment_id
+        self.item_id = item_id
 
     def compose(self) -> ComposeResult:
         """Compose the dialog layout."""
@@ -313,6 +516,6 @@ class ConfirmationDialog(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press events."""
         if event.button.id == "yes-button":
-            self.dismiss((True, self.investment_id))
+            self.dismiss((True, self.item_id))
         else:
             self.dismiss((False, None))

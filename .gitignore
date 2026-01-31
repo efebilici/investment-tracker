@@ -11,6 +11,3 @@ wheels/
 
 # Data files
 data/
-
-# Test files
-test_app.py

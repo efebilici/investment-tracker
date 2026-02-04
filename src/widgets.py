@@ -465,7 +465,8 @@ class InvestmentForm(ModalScreen):
 
     .form-container {
         width: 70;
-        height: 45;
+        height: 80%;
+        max-height: 50;
         border: thick $primary;
         background: $surface;
         padding: 1;
@@ -521,14 +522,15 @@ class InvestmentForm(ModalScreen):
     
     .data-source-section {
         border: solid $accent-darken-2;
-        padding: 1;
-        margin: 1 1;
+        padding: 0 1;
+        margin: 0 1;
     }
     
     .section-title {
         text-style: bold;
         color: $accent;
-        margin-bottom: 1;
+        margin: 0;
+        height: 1;
     }
     """
 

@@ -465,10 +465,11 @@ class InvestmentForm(ModalScreen):
 
     .form-container {
         width: 70;
-        height: auto;
+        height: 45;
         border: thick $primary;
         background: $surface;
         padding: 1;
+        overflow: auto;
     }
 
     .form-title {
@@ -507,7 +508,7 @@ class InvestmentForm(ModalScreen):
         padding: 1;
         border: solid $accent;
         background: $panel;
-        height: 8;
+        height: 5;
     }
 
     .profit {

@@ -109,6 +109,14 @@ class Investment:
     percentage_change: float
     created_at: datetime
     updated_at: datetime
+    
+    # External data fields for real-world data integration
+    symbol: Optional[str] = None  # Ticker/symbol for API lookup (e.g., "AAPL", "YAC")
+    data_source: Optional[str] = None  # "manual", "tefas", "investiny"
+    asset_type: Optional[str] = None  # "stock", "etf", "fund", "crypto", "bond", "commodity"
+    currency: str = "USD"  # Investment currency (default USD)
+    last_price_update: Optional[datetime] = None  # When price was last fetched
+    original_symbol: Optional[str] = None  # Original search symbol for tracking
 
     def __post_init__(self):
         """Validate investment data after initialization."""
@@ -120,6 +128,8 @@ class Investment:
             raise ValueError("Investment name cannot be empty")
         if not self.portfolio_id.strip():
             raise ValueError("Portfolio ID cannot be empty")
+        if self.data_source and self.data_source not in ("manual", "tefas", "investiny"):
+            raise ValueError("Invalid data source. Must be 'manual', 'tefas', or 'investiny'")
 
     @property
     def original_amount(self) -> float:
@@ -166,11 +176,23 @@ class Investment:
             "percentage_change": self.percentage_change,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+            # External data fields
+            "symbol": self.symbol,
+            "data_source": self.data_source,
+            "asset_type": self.asset_type,
+            "currency": self.currency,
+            "last_price_update": self.last_price_update.isoformat() if self.last_price_update else None,
+            "original_symbol": self.original_symbol,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Investment":
         """Create investment from dictionary."""
+        # Parse optional datetime fields
+        last_price_update = None
+        if data.get("last_price_update"):
+            last_price_update = datetime.fromisoformat(data["last_price_update"])
+        
         return cls(
             id=data["id"],
             name=data["name"],
@@ -179,10 +201,28 @@ class Investment:
             percentage_change=data["percentage_change"],
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
+            # External data fields with defaults for backward compatibility
+            symbol=data.get("symbol"),
+            data_source=data.get("data_source"),
+            asset_type=data.get("asset_type"),
+            currency=data.get("currency", "USD"),
+            last_price_update=last_price_update,
+            original_symbol=data.get("original_symbol"),
         )
 
     @classmethod
-    def create_new(cls, name: str, portfolio_id: str, final_amount: float, percentage_change: float) -> "Investment":
+    def create_new(
+        cls, 
+        name: str, 
+        portfolio_id: str, 
+        final_amount: float, 
+        percentage_change: float,
+        symbol: Optional[str] = None,
+        data_source: Optional[str] = "manual",
+        asset_type: Optional[str] = None,
+        currency: str = "USD",
+        original_symbol: Optional[str] = None,
+    ) -> "Investment":
         """Create a new investment with generated ID and timestamps."""
         now = datetime.now()
         return cls(
@@ -193,9 +233,26 @@ class Investment:
             percentage_change=percentage_change,
             created_at=now,
             updated_at=now,
+            symbol=symbol,
+            data_source=data_source,
+            asset_type=asset_type,
+            currency=currency,
+            last_price_update=None,
+            original_symbol=original_symbol or symbol,
         )
 
-    def update(self, name: Optional[str] = None, final_amount: Optional[float] = None, percentage_change: Optional[float] = None) -> "Investment":
+    def update(
+        self, 
+        name: Optional[str] = None, 
+        final_amount: Optional[float] = None, 
+        percentage_change: Optional[float] = None,
+        symbol: Optional[str] = None,
+        data_source: Optional[str] = None,
+        asset_type: Optional[str] = None,
+        currency: Optional[str] = None,
+        last_price_update: Optional[datetime] = None,
+        original_symbol: Optional[str] = None,
+    ) -> "Investment":
         """Create an updated copy of the investment."""
         return Investment(
             id=self.id,
@@ -205,6 +262,12 @@ class Investment:
             percentage_change=percentage_change if percentage_change is not None else self.percentage_change,
             created_at=self.created_at,
             updated_at=datetime.now(),
+            symbol=symbol if symbol is not None else self.symbol,
+            data_source=data_source if data_source is not None else self.data_source,
+            asset_type=asset_type if asset_type is not None else self.asset_type,
+            currency=currency if currency is not None else self.currency,
+            last_price_update=last_price_update if last_price_update is not None else self.last_price_update,
+            original_symbol=original_symbol if original_symbol is not None else self.original_symbol,
         )
 
     def move_to_portfolio(self, new_portfolio_id: str) -> "Investment":
@@ -217,7 +280,111 @@ class Investment:
             percentage_change=self.percentage_change,
             created_at=self.created_at,
             updated_at=datetime.now(),
+            symbol=self.symbol,
+            data_source=self.data_source,
+            asset_type=self.asset_type,
+            currency=self.currency,
+            last_price_update=self.last_price_update,
+            original_symbol=self.original_symbol,
         )
+
+    def update_price(self, new_price: float, new_currency: Optional[str] = None) -> "Investment":
+        """Update the investment price and recalculate percentage change.
+        
+        Args:
+            new_price: The new current price/value
+            new_currency: Optional currency code if changed
+            
+        Returns:
+            Updated Investment instance
+        """
+        original = self.original_amount
+        if original <= 0:
+            # Can't calculate percentage without valid original amount
+            new_percentage = 0.0
+        else:
+            new_percentage = ((new_price - original) / original) * 100
+        
+        return self.update(
+            final_amount=new_price,
+            percentage_change=new_percentage,
+            currency=new_currency if new_currency else self.currency,
+            last_price_update=datetime.now(),
+        )
+
+    def needs_price_update(self, max_age_hours: int = 24) -> bool:
+        """Check if price data is stale and needs refreshing.
+        
+        Args:
+            max_age_hours: Maximum acceptable age of price data
+            
+        Returns:
+            True if price data is stale or unavailable
+        """
+        # Manual investments never need auto-update
+        if self.data_source == "manual" or not self.data_source:
+            return False
+        
+        if not self.last_price_update:
+            return True
+        
+        age = datetime.now() - self.last_price_update
+        return age.total_seconds() > (max_age_hours * 3600)
+
+    def get_price_age_hours(self) -> Optional[float]:
+        """Get age of last price update in hours.
+        
+        Returns:
+            Hours since last update, or None if never updated
+        """
+        if not self.last_price_update:
+            return None
+        age = datetime.now() - self.last_price_update
+        return age.total_seconds() / 3600
+
+    def get_data_source_icon(self) -> str:
+        """Get an emoji icon representing the data source.
+        
+        Returns:
+            Emoji string for the data source
+        """
+        icons = {
+            "tefas": "🇹🇷",
+            "investiny": "🌍",
+            "manual": "✋",
+            None: "✋",
+        }
+        return icons.get(self.data_source, "✋")
+
+    def get_price_freshness_indicator(self) -> str:
+        """Get an emoji indicating price freshness.
+        
+        Returns:
+            🟢 Fresh (< 24h), 🟡 Moderate (< 7 days), 🔴 Stale (> 7 days), or ⚪ Manual
+        """
+        if self.data_source == "manual" or not self.data_source:
+            return "⚪"
+        
+        age_hours = self.get_price_age_hours()
+        if age_hours is None:
+            return "⚪"
+        
+        if age_hours < 24:
+            return "🟢"
+        elif age_hours < 168:  # 7 days
+            return "🟡"
+        else:
+            return "🔴"
+
+    @property
+    def formatted_currency(self) -> str:
+        """Format currency for display."""
+        return self.currency or "USD"
+
+    @property
+    def formatted_price_with_currency(self) -> str:
+        """Format final amount with currency symbol."""
+        return f"{self.formatted_final_amount} {self.formatted_currency}"
 
 
 @dataclass

@@ -35,7 +35,18 @@ class InvestmentStorage:
             
             # Handle migration from old format
             if version == '1.0' and 'portfolios' not in data:
-                return self._migrate_from_v1(data)
+                data = self._migrate_v1_to_v2(data)
+                version = '2.0'
+            
+            # Handle migration from v2.0 to v2.1 (external data fields)
+            if version == '2.0':
+                data = self._migrate_v2_to_v2_1(data)
+                version = '2.1'
+                # Save migrated data immediately
+                self.save_all(
+                    [Portfolio.from_dict(p) for p in data.get('portfolios', [])],
+                    [Investment.from_dict(i) for i in data.get('investments', [])]
+                )
             
             # Load portfolios
             portfolios = []
@@ -71,7 +82,7 @@ class InvestmentStorage:
             self._create_backup()
 
         data = {
-            "version": "2.0",
+            "version": "2.1",
             "last_updated": datetime.now().isoformat(),
             "portfolios": [port.to_dict() for port in portfolios],
             "investments": [inv.to_dict() for inv in investments]
@@ -84,16 +95,22 @@ class InvestmentStorage:
             print(f"Error saving data: {e}")
             raise
 
-    def _migrate_from_v1(self, data: dict) -> Tuple[List[Portfolio], List[Investment]]:
+    def _migrate_v1_to_v2(self, data: dict) -> dict:
         """Migrate data from version 1.0 format to 2.0 format.
         
         Creates default portfolios for each unique timeframe found in investments.
+        Returns the migrated data dictionary.
         """
         print("Migrating data from v1.0 to v2.0 format...")
         
         old_investments = data.get('investments', [])
         if not old_investments:
-            return [], []
+            return {
+                "version": "2.0",
+                "last_updated": datetime.now().isoformat(),
+                "portfolios": [],
+                "investments": []
+            }
         
         # Group investments by timeframe
         investments_by_timeframe = {}
@@ -139,17 +156,51 @@ class InvestmentStorage:
                         'percentage_change': inv_data['percentage_change'],
                         'created_at': inv_data['created_at'],
                         'updated_at': inv_data['updated_at'],
+                        # New fields with defaults
+                        'symbol': None,
+                        'data_source': 'manual',
+                        'asset_type': None,
+                        'currency': 'USD',
+                        'last_price_update': None,
+                        'original_symbol': None,
                     })
                     investments.append(investment)
                 except Exception as e:
                     print(f"Warning: Failed to migrate investment {inv_data.get('id', 'unknown')}: {e}")
         
-        # Save the migrated data immediately
-        print(f"Created {len(portfolios)} default portfolios and migrated {len(investments)} investments")
-        self.save_all(portfolios, investments)
-        print("Migration complete!")
+        migrated_data = {
+            "version": "2.0",
+            "last_updated": datetime.now().isoformat(),
+            "portfolios": [port.to_dict() for port in portfolios],
+            "investments": [inv.to_dict() for inv in investments]
+        }
         
-        return portfolios, investments
+        print(f"Created {len(portfolios)} default portfolios and migrated {len(investments)} investments")
+        print("Migration to v2.0 complete!")
+        
+        return migrated_data
+
+    def _migrate_v2_to_v2_1(self, data: dict) -> dict:
+        """Migrate data from version 2.0 to 2.1 format.
+        
+        Adds external data fields (symbol, data_source, asset_type, currency, etc.)
+        """
+        print("Migrating data from v2.0 to v2.1 format...")
+        
+        # Add new fields to all investments with default values
+        for inv_data in data.get('investments', []):
+            inv_data.setdefault('symbol', None)
+            inv_data.setdefault('data_source', 'manual')
+            inv_data.setdefault('asset_type', None)
+            inv_data.setdefault('currency', 'USD')
+            inv_data.setdefault('last_price_update', None)
+            inv_data.setdefault('original_symbol', None)
+        
+        data['version'] = '2.1'
+        data['last_updated'] = datetime.now().isoformat()
+        
+        print("Migration to v2.1 complete! Added external data fields.")
+        return data
 
     def _create_backup(self) -> None:
         """Create a backup of the current file."""
@@ -197,7 +248,9 @@ class InvestmentStorage:
             # Handle migration if needed
             version = data.get('version', '1.0')
             if version == '1.0' and 'portfolios' not in data:
-                return self._migrate_from_v1(data)
+                data = self._migrate_v1_to_v2(data)
+            elif version == '2.0':
+                data = self._migrate_v2_to_v2_1(data)
             
             portfolios = []
             for port_data in data.get('portfolios', []):
